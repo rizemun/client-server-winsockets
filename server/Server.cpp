@@ -11,12 +11,22 @@ using std::cout;
 using std::endl;
 
 int main() {
-	WSADATA wsaData;
 
+	WSADATA wsaData;
 	int iResult;
 
 	SOCKET ListenSocket = INVALID_SOCKET;
 	SOCKET ClientSocket = INVALID_SOCKET;
+
+	struct addrinfo *result = NULL, 
+					hints;
+
+	char recvbuf[DEFAULT_BUFFLEN];
+	int iSendResult;
+	int recvbuflen = DEFAULT_BUFFLEN;
+
+
+	cout << "serverApp" << endl;
 
 	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
 	if (iResult != 0) {
@@ -24,8 +34,7 @@ int main() {
 		return 1;
 	}
 
-	struct addrinfo *result = NULL, hints;
-
+	
 	ZeroMemory(&hints, sizeof(hints));
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
@@ -36,17 +45,16 @@ int main() {
 	if (iResult != 0) {
 		cout << "getaddrinfo failed: " << iResult << endl;
 		WSACleanup();
-		return 1;
+		return 2;
 	}
 
 	
-
 	ListenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
 	if (ListenSocket == INVALID_SOCKET) {
 		cout << "Error at socket(): " << WSAGetLastError() << endl;
 		freeaddrinfo(result);
 		WSACleanup();
-		return 1;
+		return 3;
 	}
 
 	iResult = bind(ListenSocket, result->ai_addr, (int)result->ai_addrlen);
@@ -55,64 +63,65 @@ int main() {
 		freeaddrinfo(result);
 		closesocket(ListenSocket);
 		WSACleanup();
-		return 1;
+		return 4;
 	}
 
 	//т.к. соединены сокет прослушивающий и информация из result, можно очистить память result
 	freeaddrinfo(result);
 
-	if (listen(ListenSocket, SOMAXCONN) == SOCKET_ERROR) {
+	iResult = listen(ListenSocket, SOMAXCONN);
+	if (iResult == SOCKET_ERROR) {
 		cout << "Listen failed with error: " << WSAGetLastError() << endl;
 		closesocket(ListenSocket);
 		WSACleanup();
-		return 1;
+		return 5;
 	}
 
 
 	//сюда попадаем когда клиент подключился
-	ClientSocket = INVALID_SOCKET;
-
 	ClientSocket = accept(ListenSocket, NULL, NULL);
 	if (ClientSocket == INVALID_SOCKET) {
 		cout << "accept failed: " << WSAGetLastError() << endl;
+		closesocket(ListenSocket);
 		WSACleanup();
-		return 1;
+		return 6;
 	}
 
 	//соединение установлено
-	char recvbuf[DEFAULT_BUFFLEN];
-	//int iResult,
-	int iSendResult;
-	int recvbuflen = DEFAULT_BUFFLEN;
-
+	
 	do {
 		iResult = recv(ClientSocket, recvbuf, recvbuflen, 0);
 		if (iResult > 0) {
 			cout << "Bytes received: " << iResult << endl;
-			
+
 			iSendResult = send(ClientSocket, recvbuf, iResult, 0);
 			if (iSendResult == SOCKET_ERROR) {
 				cout << "send failed: " << WSAGetLastError() << endl;
 				closesocket(ClientSocket);
 				WSACleanup();
-				return 1;
+				return 7;
 			}
 			cout << "Bytes sent: " << iSendResult << endl;
+		}
+		else if (iResult == 0) {
+			cout << "Connection closing..." << endl;
+			return 8;
 		}
 		else {
 			cout << "recv failed: " << WSAGetLastError()<<endl;
 			closesocket(ClientSocket);
 			WSACleanup();
-			return 1;
+			return 9;
 		}
 	} while (iResult > 0);
+
 
 	//все данные переданы/получены, отключаем сервер
 	iResult = shutdown(ClientSocket, SD_SEND);
 	if (iResult == SOCKET_ERROR) {
 		cout << "shutdown failed: " << WSAGetLastError() << endl;
 		WSACleanup();
-		return 1;
+		return 9;
 	}
 
 	closesocket(ClientSocket);
